@@ -5,7 +5,7 @@ import { UserProfile } from '../types';
 import { useAppContext } from '../context/AppContext';
 
 export default function Onboarding() {
-  const { setShowLanding, setUser, addNotification } = useAppContext();
+  const { setShowLanding, updateProfile, addNotification } = useAppContext();
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [income, setIncome] = useState('');
@@ -15,16 +15,21 @@ export default function Onboarding() {
   const nextStep = () => setStep(prev => prev + 1);
   const prevStep = () => setStep(prev => prev - 1);
 
-  const handleFinish = () => {
-    const profile: UserProfile = {
+  const handleFinish = async () => {
+    const profile: Partial<UserProfile> = {
       name: name || 'User',
       monthlyIncome: Number(income) || 0,
       savingsGoal: Number(goal) || 0,
       onboarded: true,
       plan: 'free'
     };
-    setUser(profile);
-    addNotification('Welcome to ExpenseGuard!', `Hi ${name || 'User'}, your financial journey starts now. We've set up your dashboard.`);
+    
+    try {
+      await updateProfile(profile);
+      addNotification('Welcome to ExpenseGuard!', `Hi ${name || 'User'}, your financial journey starts now. We've set up your dashboard.`);
+    } catch (error) {
+      console.error('Error saving profile:', error);
+    }
   };
 
   return (
