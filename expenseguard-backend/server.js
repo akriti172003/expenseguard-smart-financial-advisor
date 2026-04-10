@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const app = express();
 
-// --- ✅ 1. MIDDLEWARES & CORS CONFIG ---
+// --- ✅ 1. MIDDLEWARES & CORS ---
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -26,7 +26,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// Request Logger
+// Request Logger (Debugging ke liye)
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} to ${req.url}`);
   next();
@@ -40,24 +40,24 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
-// --- ✅ 3. MODELS & MIDDLEWARES ---
+// --- ✅ 3. MODELS & CONTROLLERS ---
 const User = require('./models/User'); 
-const Expense = require('./models/Expense'); // Ensure this model exists
+const Expense = require('./models/Expense'); 
 const protect = require('./middleware/authMiddleware');
 const { getProfile } = require('./controllers/authController');
 
-// --- ✅ 4. ADVANCED BUSINESS LOGIC (AI Strategy) ---
-// Ise yahan define kiya hai taaki recruiters ko aapki "Business Logic" dikhe
+// --- ✅ 4. ADVANCED AI LOGIC (Analyze Finance) ---
 app.get('/api/user/analyze-finance', protect, async (req, res, next) => {
   try {
     const expenses = await Expense.find({ user: req.user.id });
     const user = await User.findById(req.user.id);
     
-    const totalSpent = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const totalSpent = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
     const income = user.monthlyIncome || 0;
     const burnRate = income > 0 ? (totalSpent / income) * 100 : 0;
 
-    // Logic for dynamic advice
     let analysis = {
       type: 'balanced',
       problem: 'Routine spending',
@@ -79,16 +79,18 @@ app.get('/api/user/analyze-finance', protect, async (req, res, next) => {
 
     res.json(analysis);
   } catch (err) {
-    next(err); // Pass error to Global Handler
+    next(err); 
   }
 });
 
 // --- ✅ 5. API ROUTES ---
 
+// Health Check
 app.get('/', (req, res) => {
   res.status(200).json({ message: "ExpenseGuard API is running smoothly!" });
 });
 
+// Profile Routes
 app.get('/api/user/profile', protect, getProfile);
 
 app.patch('/api/user/profile', protect, async (req, res, next) => {
@@ -99,26 +101,38 @@ app.patch('/api/user/profile', protect, async (req, res, next) => {
       { new: true, runValidators: true }
     ).select('-password');
     
-    if (!updatedUser) return res.status(404).json({ error: "User not found" });
     res.json(updatedUser);
   } catch (err) {
     next(err);
   }
 });
 
+// Modular Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 
-// --- ✅ 6. GLOBAL ERROR HANDLER (The "Safety Net") ---
+// --- ✅ 6. IMPROVED GLOBAL ERROR HANDLER ---
+// Ye middleware ab generic error nahi balki detailed error dega
 app.use((err, req, res, next) => {
-  console.error("Internal Error:", err.message);
-  
-  // Custom logic for validation errors (like Zod or Mongoose)
-  const statusCode = err.name === 'ValidationError' ? 400 : (res.statusCode === 200 ? 500 : res.statusCode);
-  
+  console.error("Backend Error Log:", err);
+
+  // Mongoose Validation Error (e.g., missing fields)
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: Object.values(err.errors).map(val => val.message).join(', ')
+    });
+  }
+
+  // JWT/Auth Errors
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({ success: false, message: 'Invalid Token' });
+  }
+
+  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
     success: false,
-    message: err.message || "An unexpected error occurred on the server.",
+    message: err.message || "An unexpected error occurred",
     stack: process.env.NODE_ENV === 'production' ? null : err.stack,
   });
 });
