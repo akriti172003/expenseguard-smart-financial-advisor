@@ -3,16 +3,16 @@ const router = express.Router();
 const Expense = require('../models/Expense');
 const protect = require('../middleware/authMiddleware');
 
-// --- ✅ 1. GET ALL EXPENSES ---
+// --- ✅ 1. GET ALL EXPENSES (Charts ke liye data yahan se jata hai) ---
 router.get('/', protect, async (req, res, next) => {
   try {
-    // Note: 'user' field use karein (jo aapke model mein defined hai)
+    // Search by 'user' (kyunki humne model update kiya hai)
     const expenses = await Expense.find({ user: req.user.id }).sort({ date: -1 });
     
-    // Hamesha array bhejein
+    // Hamesha array bhejein taaki Frontend charts empty state handle kar sakein
     res.json(expenses || []); 
   } catch (err) {
-    next(err); // server.js ke global handler ko bhej dein
+    next(err); 
   }
 });
 
@@ -21,18 +21,18 @@ router.post('/', protect, async (req, res, next) => {
   try {
     const { title, amount, category, date } = req.body;
 
-    // Basic Validation check
-    if (!title || !amount || !category) {
+    // Strict Validation
+    if (!title || amount === undefined || !category) {
       return res.status(400).json({ 
         success: false, 
-        message: "Please provide title, amount, and category" 
+        message: "Missing fields: title, amount, and category are required." 
       });
     }
 
     const newExpense = new Expense({
-      user: req.user.id, // 👈 'userId' ki jagah 'user' (as per your server.js logic)
+      user: req.user.id, // 👈 'userId' ki jagah 'user'
       title: title.trim(),
-      amount: Number(amount), // Ensure it's a number
+      amount: Number(amount), // Frontend se string aaye toh bhi Number ban jaye
       category,
       date: date || Date.now()
     });
@@ -40,24 +40,36 @@ router.post('/', protect, async (req, res, next) => {
     const savedExpense = await newExpense.save();
     res.status(201).json(savedExpense);
   } catch (err) {
-    // "Failed to add expense" ki jagah asli error next(err) se bhejein
     next(err); 
   }
 });
 
-// --- ✅ 3. DELETE EXPENSE (Optional but Recommended) ---
+// --- ✅ 3. DELETE EXPENSE ---
 router.delete('/:id', protect, async (req, res, next) => {
   try {
     const expense = await Expense.findById(req.params.id);
-    if (!expense) return res.status(404).json({ message: "Expense not found" });
+    
+    if (!expense) {
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
 
-    // Check karein ki user apna hi expense delete kar raha hai
+    // Authorization check
     if (expense.user.toString() !== req.user.id) {
-      return res.status(401).json({ message: "Not authorized" });
+      return res.status(401).json({ success: false, message: "Not authorized to delete this" });
     }
 
     await expense.deleteOne();
-    res.json({ message: "Expense removed" });
+    res.json({ success: true, message: "Expense removed" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- ✅ 4. CLEAR ALL (Frontend ke 'Clear' button ke liye) ---
+router.delete('/clear/all', protect, async (req, res, next) => {
+  try {
+    await Expense.deleteMany({ user: req.user.id });
+    res.json({ success: true, message: "All expenses cleared" });
   } catch (err) {
     next(err);
   }
