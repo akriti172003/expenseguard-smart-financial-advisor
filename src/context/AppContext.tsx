@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Expense, UserProfile, FinancialStrategy } from '../types';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// ✅ Fix: Deployment ke liye dynamic URL (Localhost vs Render)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 interface AppContextType {
   user: UserProfile | null;
@@ -79,16 +80,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const res = await fetch(`${API_BASE_URL}/user/profile`, {
             headers: { 'Authorization': `Bearer ${currentToken}` }
           });
+          
           if (res.ok) {
             const userData = await res.json();
             setUser(userData);
             await fetchExpenses(currentToken);
+            setShowLanding(false); // Logged in user ke liye landing chhupayein
           } else {
+            // Agar token expire ho gaya hai
             logout();
           }
         } catch (err) {
-          console.error("Init Error:", err);
+          console.error("Init Error (Check if Backend is running):", err);
+          // 💡 Important: Error aane par user ko landing par hi rakhein
+          setShowLanding(true);
         }
+      } else {
+        setShowLanding(true);
       }
       setAuthReady(true);
       setLoading(false);
@@ -148,7 +156,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!currentToken) return;
 
     try {
-      // ✅ Strict data cleaning: Numbers ko explicitly number mein convert kiya
       const cleanedUpdates = {
         ...updates,
         monthlyIncome: updates.monthlyIncome !== undefined ? Number(updates.monthlyIncome) : undefined,
@@ -217,7 +224,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const totalBalance = useMemo(() => 
     (Number(user?.monthlyIncome) || 0) - totalExpenses, [user, totalExpenses]);
 
-  // FIX: Pie Chart ke liye categories ko group kiya aur formatted name diye
   const categoryData = useMemo(() => {
     if (expenses.length === 0) return [];
     const data: Record<string, number> = {};
@@ -231,7 +237,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, [expenses]);
 
-  // FIX: Pichle 7 din ka data calculate kiya
   const trendData = useMemo(() => {
     const days = Array.from({ length: 7 }).map((_, i) => {
       const d = new Date();
