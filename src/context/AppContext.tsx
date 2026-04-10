@@ -85,7 +85,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const userData = await res.json();
             setUser(userData);
             await fetchExpenses(currentToken);
-            // Dashboard load hote hi AI analysis trigger karein
             await generateStrategy(); 
             setShowLanding(false);
           } else {
@@ -111,6 +110,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         const data = await res.json();
+        // MongoDB _id ko local id mein map karna zaroori hai
         setExpenses(data.map((e: any) => ({ ...e, id: e._id || e.id })));
       }
     } catch (err) {
@@ -124,7 +124,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!currentToken) return;
 
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE_URL}/user/analyze-finance`, {
         headers: { 'Authorization': `Bearer ${currentToken}` }
       });
@@ -134,33 +133,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (err) {
       console.error("AI Analysis Failed:", err);
-    } finally {
-      setLoading(false);
     }
   };
 
-  // --- ✅ 4. EXPENSE ACTIONS ---
+  // --- ✅ 4. EXPENSE ACTIONS (Fixed for 400 Error) ---
   const addExpense = async (newExp: Omit<Expense, 'id'>) => {
     const currentToken = localStorage.getItem('expenseguard_token');
     if (!currentToken) return;
+
     try {
+      // Data format ko sanitize karna zaroori hai taaki backend reject na kare
+      const payload = {
+        title: String(newExp.title).trim(),
+        amount: Number(newExp.amount),
+        category: String(newExp.category),
+        date: newExp.date || new Date().toISOString()
+      };
+
       const res = await fetch(`${API_BASE_URL}/expenses`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${currentToken}` 
         },
-        body: JSON.stringify(newExp)
+        body: JSON.stringify(payload)
       });
+
+      const result = await res.json();
+
       if (res.ok) {
-        const savedExp = await res.json();
-        setExpenses(prev => [{ ...savedExp, id: savedExp._id || savedExp.id }, ...prev]);
-        addNotification("Expense Added", `Spent ₹${newExp.amount} on ${newExp.category}`);
-        // Data change hote hi strategy refresh karein
+        setExpenses(prev => [{ ...result, id: result._id || result.id }, ...prev]);
+        addNotification("Expense Added", `Spent ₹${payload.amount} on ${payload.category}`);
         generateStrategy(); 
+      } else {
+        // Backend se aane wale validation message ko dikhayein
+        addNotification("Error", result.message || "Invalid input data");
+        console.error("Server validation failed:", result);
       }
     } catch (err) {
       console.error("Add Expense Error:", err);
+      addNotification("Error", "Network error while adding expense.");
     }
   };
 
@@ -176,7 +188,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setExpenses(prev => prev.filter(e => e.id !== id));
         generateStrategy();
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error("Delete Error:", err);
+    }
   };
 
   const clearExpenses = async () => {
@@ -207,11 +221,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const updatedUser = await res.json();
         setUser(updatedUser);
-        addNotification("Profile Updated", "Your financial settings have been saved.");
+        addNotification("Profile Updated", "Settings saved successfully.");
         generateStrategy();
         setShowProfileModal(false);
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error("Profile Update Error:", err);
+    }
   };
 
   const logout = () => {
