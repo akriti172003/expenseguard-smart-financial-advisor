@@ -6,19 +6,20 @@ require('dotenv').config();
 const app = express();
 
 // --- ✅ 1. MIDDLEWARES & CORS CONFIG ---
-// Deployment ke waqt allowedOrigins mein apna Vercel URL zaroori add karein
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  // "https://your-frontend-name.vercel.app" // 👈 Apna Vercel URL yahan paste karein
+  // 👈 YAHAN APNA VERCEL URL ADD KIYA HAI
+  "https://expenseguard-smart-financial-adviso-gamma.vercel.app" 
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Postman ya mobile apps ke liye (!origin) check zaroori hai
+    // Postman ya local requests ke liye !origin check
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log("Blocked by CORS:", origin); // Debugging ke liye help karega
       callback(new Error('Not allowed by CORS - Production Security Check'));
     }
   },
@@ -28,7 +29,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// Request Logger (Development ke waqt help karega)
+// Request Logger
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} to ${req.url}`);
   next();
@@ -39,17 +40,18 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected Successfully"))
   .catch(err => {
     console.error("❌ MongoDB Connection Error:", err.message);
-    process.exit(1); // Agar DB connect na ho toh server band kar dein
+    process.exit(1);
   });
 
 // --- ✅ 3. MODELS & CONTROLLERS ---
-const User = require('./models/User');
+// Ensure models/User.js file exists in the folder
+const User = require('./models/User'); 
 const protect = require('./middleware/authMiddleware');
 const { getProfile } = require('./controllers/authController');
 
 // --- ✅ 4. API ROUTES ---
 
-// Health Check Route
+// Health Check Route (Ispe browser mein check kar sakte hain ki backend live hai)
 app.get('/', (req, res) => {
   res.status(200).json({ message: "ExpenseGuard API is running smoothly!" });
 });
@@ -90,5 +92,4 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is flying on port ${PORT}`);
-  console.log(`👉 API Base: http://localhost:${PORT}/api`);
 });
