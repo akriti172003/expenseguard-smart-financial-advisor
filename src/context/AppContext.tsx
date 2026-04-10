@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Expense, UserProfile, FinancialStrategy } from '../types';
 
-// ✅ Fix: Deployment ke liye dynamic URL (Localhost vs Render)
+// ✅ Environment variables se API URL uthana
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 interface AppContextType {
@@ -29,7 +29,7 @@ interface AppContextType {
   deleteExpense: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   clearExpenses: () => Promise<void>;
-  generateStrategy: () => void;
+  generateStrategy: () => Promise<void>;
   
   addNotification: (title: string, message: string) => void;
   clearNotifications: () => void;
@@ -55,7 +55,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
 
-  // --- Notifications Logic ---
+  // --- ✅ 1. NOTIFICATIONS LOGIC ---
   const addNotification = (title: string, message: string) => {
     const newNotif = {
       id: Math.random().toString(36).substr(2, 9),
@@ -71,7 +71,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
-  // --- Auth & Initialization ---
+  // --- ✅ 2. AUTH & INITIALIZATION ---
   useEffect(() => {
     const init = async () => {
       const currentToken = localStorage.getItem('expenseguard_token');
@@ -85,14 +85,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const userData = await res.json();
             setUser(userData);
             await fetchExpenses(currentToken);
-            setShowLanding(false); // Logged in user ke liye landing chhupayein
+            // Dashboard load hote hi AI analysis trigger karein
+            await generateStrategy(); 
+            setShowLanding(false);
           } else {
-            // Agar token expire ho gaya hai
             logout();
           }
         } catch (err) {
-          console.error("Init Error (Check if Backend is running):", err);
-          // 💡 Important: Error aane par user ko landing par hi rakhein
+          console.error("Initialization Error:", err);
           setShowLanding(true);
         }
       } else {
@@ -111,74 +111,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         const data = await res.json();
-        // Backend '_id' ko frontend 'id' se map kar rahe hain
         setExpenses(data.map((e: any) => ({ ...e, id: e._id || e.id })));
       }
     } catch (err) {
-      console.error("Fetch Expenses Error:", err);
+      console.error("Fetch Error:", err);
     }
   };
 
-  // --- Actions ---
+  // --- ✅ 3. DYNAMIC AI STRATEGY (Backend-Driven) ---
+  const generateStrategy = async () => {
+    const currentToken = localStorage.getItem('expenseguard_token');
+    if (!currentToken) return;
 
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE_URL}/user/analyze-finance`, {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStrategy(data);
+      }
+    } catch (err) {
+      console.error("AI Analysis Failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- ✅ 4. EXPENSE ACTIONS ---
   const addExpense = async (newExp: Omit<Expense, 'id'>) => {
     const currentToken = localStorage.getItem('expenseguard_token');
     if (!currentToken) return;
     try {
-      const payload = {
-        title: newExp.title || "Untitled",
-        amount: Number(newExp.amount) || 0,
-        category: newExp.category || "General",
-        date: newExp.date || new Date().toISOString()
-      };
-
       const res = await fetch(`${API_BASE_URL}/expenses`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${currentToken}` 
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(newExp)
       });
-
       if (res.ok) {
         const savedExp = await res.json();
         setExpenses(prev => [{ ...savedExp, id: savedExp._id || savedExp.id }, ...prev]);
-        addNotification("Expense Added", `Added ₹${payload.amount}`);
+        addNotification("Expense Added", `Spent ₹${newExp.amount} on ${newExp.category}`);
+        // Data change hote hi strategy refresh karein
+        generateStrategy(); 
       }
     } catch (err) {
       console.error("Add Expense Error:", err);
-    }
-  };
-
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    const currentToken = localStorage.getItem('expenseguard_token');
-    if (!currentToken) return;
-
-    try {
-      const cleanedUpdates = {
-        ...updates,
-        monthlyIncome: updates.monthlyIncome !== undefined ? Number(updates.monthlyIncome) : undefined,
-        savingsGoal: updates.savingsGoal !== undefined ? Number(updates.savingsGoal) : undefined
-      };
-
-      const res = await fetch(`${API_BASE_URL}/user/profile`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}` 
-        },
-        body: JSON.stringify(cleanedUpdates)
-      });
-      
-      if (res.ok) {
-        const updatedUser = await res.json();
-        setUser(updatedUser);
-        addNotification("Success", "Financial profile updated!");
-        setShowProfileModal(false);
-      }
-    } catch (err) {
-      console.error("Update Profile Error:", err);
     }
   };
 
@@ -192,6 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         setExpenses(prev => prev.filter(e => e.id !== id));
+        generateStrategy();
       }
     } catch (err) {}
   };
@@ -205,6 +188,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Authorization': `Bearer ${currentToken}` }
       });
       setExpenses([]);
+      setStrategy(null);
+    } catch (err) {}
+  };
+
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    const currentToken = localStorage.getItem('expenseguard_token');
+    if (!currentToken) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/user/profile`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}` 
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
+        addNotification("Profile Updated", "Your financial settings have been saved.");
+        generateStrategy();
+        setShowProfileModal(false);
+      }
     } catch (err) {}
   };
 
@@ -213,11 +219,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToken(null);
     setUser(null);
     setExpenses([]);
+    setStrategy(null);
     setShowLanding(true);
   };
 
-  // --- 🚀 Memoized Stats (Improved for Charts) ---
-  
+  // --- ✅ 5. MEMOIZED ANALYTICS ---
   const totalExpenses = useMemo(() => 
     expenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0), [expenses]);
 
@@ -251,20 +257,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
     }));
   }, [expenses]);
-
-  const generateStrategy = () => {
-    setStrategy({
-      type: 'balanced',
-      problem: 'High Utility Spending',
-      cause: 'Routine Subscriptions',
-      strategy: 'Growth',
-      outcome: 'Savings Increased by 12%',
-      topCategory: 'General',
-      suggestedActions: ['Review Subscriptions', 'Set Daily Limit'],
-      weeklySavings: 500,
-      monthlyProjection: 2000
-    });
-  };
 
   return (
     <AppContext.Provider value={{
