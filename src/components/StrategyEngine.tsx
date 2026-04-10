@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { CheckCircle, AlertTriangle, Lightbulb, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
+// ✅ Fix: Deployment ke liye dynamic URL setup
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+
 export default function StrategyEngine() {
   const { user, setUser, token } = useAppContext();
   const [isApplying, setIsApplying] = useState(false);
@@ -19,8 +22,8 @@ export default function StrategyEngine() {
     const newGoal = Math.round(currentGoal * increment);
 
     try {
-      // ✅ 1. Backend Call (MongoDB Sync)
-      const response = await fetch('http://localhost:5000/api/user/profile', {
+      // ✅ Fix: Hardcoded localhost ko API_BASE_URL se replace kiya
+      const response = await fetch(`${API_BASE_URL}/user/profile`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -33,10 +36,10 @@ export default function StrategyEngine() {
 
       const updatedUser = await response.json();
 
-      // ✅ 2. Frontend State Update
+      // ✅ Frontend State Update
       setUser(updatedUser);
       
-      // ✅ 3. Success Animation
+      // ✅ Success Animation
       setIsSuccess(true);
       setTimeout(() => setIsSuccess(false), 3000);
       

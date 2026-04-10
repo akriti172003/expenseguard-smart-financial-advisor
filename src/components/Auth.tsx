@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// ✅ Fix: Localhost ko hatakar dynamic URL set kiya gaya hai
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 export default function Auth() {
   const { setToken, setUser } = useAppContext();
@@ -23,6 +24,7 @@ export default function Auth() {
     const payload = isLogin ? { email, password } : { name, email, password };
 
     try {
+      // ✅ Yahan ab Render ka URL use hoga deployment ke waqt
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,14 +42,17 @@ export default function Auth() {
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      setError('Could not connect to the authentication server.');
+      // ✅ Helpful error message
+      setError('Server connection failed. Please check your internet or try again later.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ... (Baaki saara UI code waisa hi rahega)
   return (
     <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+      {/* ... keeping the rest of your beautiful UI exactly the same ... */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 blur-[120px] rounded-full" />
