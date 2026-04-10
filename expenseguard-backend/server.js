@@ -5,28 +5,35 @@ require('dotenv').config();
 
 const app = express();
 
-// --- ✅ 1. MIDDLEWARES & CORS ---
+// --- ✅ 1. MIDDLEWARES & CORS (Fixed for your Vercel Domains) ---
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  "https://expenseguard-smart-financial-adviso-gamma.vercel.app" 
+  "https://expenseguard-smart-financial-adviso-gamma.vercel.app",
+  "https://expenseguard-smart-financial-adviso.vercel.app" // 👈 Added this to fix CORS error
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      // Isse aapko Render logs mein dikhega ki kaunsa URL block ho raha hai
+      console.error(`🚫 CORS Blocked for origin: ${origin}`);
       callback(new Error('Not allowed by CORS - Production Security Check'));
     }
   },
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"]
+  methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 app.use(express.json());
 
-// Request Logger (Debugging ke liye)
+// Request Logger
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} to ${req.url}`);
   next();
@@ -85,12 +92,10 @@ app.get('/api/user/analyze-finance', protect, async (req, res, next) => {
 
 // --- ✅ 5. API ROUTES ---
 
-// Health Check
 app.get('/', (req, res) => {
   res.status(200).json({ message: "ExpenseGuard API is running smoothly!" });
 });
 
-// Profile Routes
 app.get('/api/user/profile', protect, getProfile);
 
 app.patch('/api/user/profile', protect, async (req, res, next) => {
@@ -112,11 +117,9 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 
 // --- ✅ 6. IMPROVED GLOBAL ERROR HANDLER ---
-// Ye middleware ab generic error nahi balki detailed error dega
 app.use((err, req, res, next) => {
   console.error("Backend Error Log:", err);
 
-  // Mongoose Validation Error (e.g., missing fields)
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -124,9 +127,8 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // JWT/Auth Errors
-  if (err.name === 'UnauthorizedError') {
-    return res.status(401).json({ success: false, message: 'Invalid Token' });
+  if (err.name === 'UnauthorizedError' || err.message === 'Not authorized') {
+    return res.status(401).json({ success: false, message: 'Invalid or Missing Token' });
   }
 
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
