@@ -1,42 +1,37 @@
 import React, { useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { BarChart3, AlertTriangle, CheckCircle2, ArrowRight, Zap } from 'lucide-react';
 import { Decision } from '../types';
 import { useAppContext } from '../context/AppContext';
 
 export default function WeeklyAnalyzer() {
-  // ✅ FIX 1: Provide a default empty object to prevent "undefined" crash
+  // ✅ FIX 1: Pulled insightData (real DB data) and categoryData from Context
   const { 
-    weeklyData = { food: 0, travel: 0, shopping: 0, bills: 0 }, 
-    setWeeklyData, 
+    insightData,
     user, 
-    setActiveTab 
+    setActiveTab,
+    addNotification 
   } = useAppContext();
 
-  const onOptimize = (cat: string) => {
-    if (!setWeeklyData) return;
-    setWeeklyData(prev => ({
-      ...prev,
-      [cat]: Math.max(0, (prev[cat as keyof typeof prev] || 0) * 0.8)
-    }));
+  // Helper to get category value from our real DB data
+  const getAmount = (catName: string) => {
+    const found = insightData.categoryBreakdown.find(
+      c => c.name.toLowerCase() === catName.toLowerCase()
+    );
+    return found ? found.value : 0;
   };
 
   const onAdjustBudget = () => setActiveTab?.('dashboard');
 
-  const weeklyBudget = (user?.monthlyIncome || 0) / 4;
+  // Calculate budget (Monthly / 4)
+  const weeklyBudget = (Number(user?.monthlyIncome) || 0) / 4;
 
-  // ✅ FIX 2: Use Optional Chaining (?.) and Fallbacks (|| 0)
-  const total = useMemo(() => {
-    const food = weeklyData?.food || 0;
-    const travel = weeklyData?.travel || 0;
-    const shopping = weeklyData?.shopping || 0;
-    const bills = weeklyData?.bills || 0;
-    return food + travel + shopping + bills;
-  }, [weeklyData]);
-
+  // ✅ FIX 2: Use actual total from insightData
+  const total = insightData.totalSpending;
   const diff = weeklyBudget - total;
   const isOver = diff < 0;
 
+  // Interactive Decisions Engine
   const decisions = useMemo((): Decision[] => {
     const res: Decision[] = [];
     if (total === 0) return res;
@@ -45,7 +40,7 @@ export default function WeeklyAnalyzer() {
       res.push({ 
         type: 'warning', 
         message: `You exceeded your weekly budget by ₹${Math.abs(diff).toLocaleString('en-IN')}`,
-        action: 'Optimize Spending'
+        action: 'View Detailed Breakdown'
       });
     } else {
       res.push({ 
@@ -54,24 +49,20 @@ export default function WeeklyAnalyzer() {
       });
     }
 
-    const foodValue = weeklyData?.food || 0;
+    // Food Analysis
+    const foodValue = getAmount('Food');
     const foodPerc = (foodValue / total) * 100;
     
     if (foodPerc > 30) {
       res.push({
         type: 'suggestion',
-        message: `Food accounts for ${foodPerc.toFixed(0)}% of your spending. Reducing this could save ₹${(foodValue * 0.2).toFixed(0)} weekly.`,
-        action: 'Reduce Food Expenses'
+        message: `Food accounts for ${foodPerc.toFixed(0)}% of your spending. Try meal prepping to save ₹${(foodValue * 0.2).toFixed(0)} next week.`,
+        action: 'Set Food Alert'
       });
     }
 
     return res;
-  }, [total, diff, isOver, weeklyData, weeklyBudget]);
-
-  const handleInputChange = (key: string, value: number) => {
-    if (!setWeeklyData) return;
-    setWeeklyData(prev => ({ ...prev, [key]: value }));
-  };
+  }, [total, diff, isOver, insightData, weeklyBudget]);
 
   return (
     <div className="space-y-8 p-4">
@@ -91,36 +82,37 @@ export default function WeeklyAnalyzer() {
             </div>
           </div>
           <div className="md:text-right">
-            <p className="text-[10px] text-gray-500 font-bold uppercase">Weekly Budget</p>
+            <p className="text-[10px] text-gray-500 font-bold uppercase">Weekly Budget Target</p>
             <p className="text-lg font-black text-white">₹{weeklyBudget.toLocaleString('en-IN')}</p>
           </div>
         </div>
 
+        {/* --- Category Progress Grid --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-10">
-          {Object.entries(weeklyData).map(([key, value]) => (
-            <div key={key} className="space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block ml-1">{key}</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">₹</span>
-                <input 
-                  type="number"
-                  value={value || ''}
-                  onChange={(e) => handleInputChange(key, Number(e.target.value))}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-8 pr-4 outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold text-white"
-                />
+          {['Food', 'Travel', 'Shopping', 'Bills'].map((cat) => {
+            const value = getAmount(cat);
+            const percentage = total > 0 ? (value / total) * 100 : 0;
+            
+            return (
+              <div key={cat} className="space-y-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">{cat}</label>
+                <p className="text-xl font-black text-white">₹{value.toLocaleString('en-IN')}</p>
+                
+                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-indigo-500" 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${percentage}%` }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                  />
+                </div>
+                <p className="text-[9px] text-gray-500 font-bold">{percentage.toFixed(1)}% of total</p>
               </div>
-              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-indigo-500" 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${total > 0 ? ((value as number) / total) * 100 : 0}%` }}
-                  transition={{ duration: 1 }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
+        {/* --- Summary Bar --- */}
         <div className="p-6 rounded-[2rem] bg-gradient-to-br from-indigo-600/10 to-purple-600/10 border border-white/5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-8">
@@ -141,25 +133,26 @@ export default function WeeklyAnalyzer() {
             </div>
             <button 
               onClick={onAdjustBudget}
-              className="w-full md:w-auto px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 text-white"
+              className="w-full md:w-auto px-6 py-3 bg-white text-black rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
             >
-              Adjust Weekly Budget
+              Back to Dashboard
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </motion.div>
 
+      {/* --- Smart Decisions --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {decisions.length === 0 ? (
-          <div className="md:col-span-2 p-12 text-center glass-card border border-white/5 rounded-[2.5rem]">
-            <p className="text-gray-500 font-bold">Enter your weekly spending to see smart insights.</p>
+          <div className="md:col-span-2 p-12 text-center glass-card border border-white/5 rounded-[2.5rem] bg-white/5">
+            <p className="text-gray-500 font-bold italic">Add some expenses to unlock AI-powered spending insights.</p>
           </div>
         ) : (
           decisions.map((decision, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className={`p-6 rounded-[2rem] border flex flex-col justify-between gap-6 shadow-xl ${
                 decision.type === 'warning' 
@@ -175,13 +168,16 @@ export default function WeeklyAnalyzer() {
                 }`}>
                   {decision.type === 'warning' ? <AlertTriangle className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
                 </div>
-                <p className="font-bold leading-relaxed">{decision.message}</p>
+                <div>
+                  <p className="font-black text-xs uppercase mb-1 tracking-widest opacity-70">AI Insight</p>
+                  <p className="font-bold leading-relaxed">{decision.message}</p>
+                </div>
               </div>
               {decision.action && (
                 <button 
-                  onClick={() => onOptimize(decision.action === 'Reduce Food Expenses' ? 'food' : 'general')}
+                  onClick={() => addNotification("Insight Saved", "We'll remind you to optimize this category.")}
                   className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
-                    decision.type === 'warning' ? 'bg-pink-500 text-white shadow-lg shadow-pink-500/20' : 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                    decision.type === 'warning' ? 'bg-pink-500 text-white' : 'bg-indigo-500 text-white'
                   }`}
                 >
                   {decision.action}

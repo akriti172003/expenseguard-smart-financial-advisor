@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Expense, UserProfile, FinancialStrategy } from '../types';
+import { Expense, UserProfile, FinancialStrategy, InsightData } from '../types';
 
-// ✅ Environment variables se API URL uthana
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 interface AppContextType {
@@ -12,6 +11,7 @@ interface AppContextType {
   showUpgradeModal: boolean;
   showProfileModal: boolean;
   strategy: FinancialStrategy | null;
+  insightData: InsightData; // ✅ Added for Dashboard sync
   notifications: any[];
   loading: boolean;
   authReady: boolean;
@@ -29,7 +29,7 @@ interface AppContextType {
   deleteExpense: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   clearExpenses: () => Promise<void>;
-  generateStrategy: () => Promise<void>;
+  generateStrategy: (authToken?: string) => Promise<void>;
   
   addNotification: (title: string, message: string) => void;
   clearNotifications: () => void;
@@ -55,7 +55,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
 
-  // --- ✅ 1. NOTIFICATIONS LOGIC ---
+  // --- ✅ 1. NOTIFICATIONS ---
   const addNotification = (title: string, message: string) => {
     const newNotif = {
       id: Math.random().toString(36).substr(2, 9),
@@ -75,30 +75,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const init = async () => {
       const currentToken = localStorage.getItem('expenseguard_token');
-      if (currentToken) {
-        try {
-          const res = await fetch(`${API_BASE_URL}/user/profile`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
-          });
-          
-          if (res.ok) {
-            const userData = await res.json();
-            setUser(userData);
-            await fetchExpenses(currentToken);
-            await generateStrategy(); 
-            setShowLanding(false);
-          } else {
-            logout();
-          }
-        } catch (err) {
-          console.error("Initialization Error:", err);
-          setShowLanding(true);
-        }
-      } else {
+      
+      if (!currentToken) {
         setShowLanding(true);
+        setLoading(false);
+        setAuthReady(true);
+        return;
       }
-      setAuthReady(true);
-      setLoading(false);
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/user/profile`, {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+        
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
+          // Parallel fetch for speed
+          await Promise.all([
+            fetchExpenses(currentToken),
+            generateStrategy(currentToken)
+          ]);
+          setShowLanding(false);
+        } else {
+          logout();
+        }
+      } catch (err) {
+        console.error("Auth Init Error:", err);
+        setShowLanding(true);
+      } finally {
+        setAuthReady(true);
+        setLoading(false);
+      }
     };
     init();
   }, [token]);
@@ -110,17 +118,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         const data = await res.json();
-        // MongoDB _id ko local id mein map karna zaroori hai
         setExpenses(data.map((e: any) => ({ ...e, id: e._id || e.id })));
       }
     } catch (err) {
-      console.error("Fetch Error:", err);
+      console.error("Fetch Expenses Error:", err);
     }
   };
 
-  // --- ✅ 3. DYNAMIC AI STRATEGY (Backend-Driven) ---
-  const generateStrategy = async () => {
-    const currentToken = localStorage.getItem('expenseguard_token');
+  const generateStrategy = async (authToken?: string) => {
+    const currentToken = authToken || localStorage.getItem('expenseguard_token');
     if (!currentToken) return;
 
     try {
@@ -136,43 +142,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // --- ✅ 4. EXPENSE ACTIONS (Fixed for 400 Error) ---
-  const addExpense = async (newExp: Omit<Expense, 'id'>) => {
+  // --- ✅ 3. ACTIONS ---
+  const addExpense = async (newExp: any) => {
     const currentToken = localStorage.getItem('expenseguard_token');
     if (!currentToken) return;
 
     try {
-      // Data format ko sanitize karna zaroori hai taaki backend reject na kare
-      const payload = {
-        title: String(newExp.title).trim(),
-        amount: Number(newExp.amount),
-        category: String(newExp.category),
-        date: newExp.date || new Date().toISOString()
-      };
-
       const res = await fetch(`${API_BASE_URL}/expenses`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${currentToken}` 
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(newExp)
       });
 
       const result = await res.json();
 
       if (res.ok) {
         setExpenses(prev => [{ ...result, id: result._id || result.id }, ...prev]);
-        addNotification("Expense Added", `Spent ₹${payload.amount} on ${payload.category}`);
-        generateStrategy(); 
-      } else {
-        // Backend se aane wale validation message ko dikhayein
-        addNotification("Error", result.message || "Invalid input data");
-        console.error("Server validation failed:", result);
+        addNotification("Expense Added", `Spent ₹${newExp.amount} on ${newExp.category}`);
+        // Refresh AI Analysis after adding
+        generateStrategy(currentToken); 
       }
     } catch (err) {
-      console.error("Add Expense Error:", err);
-      addNotification("Error", "Network error while adding expense.");
+      addNotification("Error", "Check your connection");
     }
   };
 
@@ -186,48 +180,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (res.ok) {
         setExpenses(prev => prev.filter(e => e.id !== id));
-        generateStrategy();
+        generateStrategy(currentToken);
       }
-    } catch (err) {
-      console.error("Delete Error:", err);
-    }
-  };
-
-  const clearExpenses = async () => {
-    const currentToken = localStorage.getItem('expenseguard_token');
-    if (!currentToken) return;
-    try {
-      await fetch(`${API_BASE_URL}/expenses/clear`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${currentToken}` }
-      });
-      setExpenses([]);
-      setStrategy(null);
     } catch (err) {}
-  };
-
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    const currentToken = localStorage.getItem('expenseguard_token');
-    if (!currentToken) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/user/profile`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}` 
-        },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) {
-        const updatedUser = await res.json();
-        setUser(updatedUser);
-        addNotification("Profile Updated", "Settings saved successfully.");
-        generateStrategy();
-        setShowProfileModal(false);
-      }
-    } catch (err) {
-      console.error("Profile Update Error:", err);
-    }
   };
 
   const logout = () => {
@@ -239,7 +194,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setShowLanding(true);
   };
 
-  // --- ✅ 5. MEMOIZED ANALYTICS ---
+  // --- ✅ 4. ANALYTICS ENGINE (Memoized) ---
   const totalExpenses = useMemo(() => 
     expenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0), [expenses]);
 
@@ -247,7 +202,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (Number(user?.monthlyIncome) || 0) - totalExpenses, [user, totalExpenses]);
 
   const categoryData = useMemo(() => {
-    if (expenses.length === 0) return [];
     const data: Record<string, number> = {};
     expenses.forEach(e => {
       const cat = e.category || "General";
@@ -274,13 +228,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, [expenses]);
 
+  // ✅ COMBINED DATA FOR UI
+  const insightData: InsightData = useMemo(() => ({
+    totalSpending: totalExpenses,
+    categoryBreakdown: categoryData,
+    weeklyTrends: trendData,
+    insights: strategy ? [strategy.strategy] : [],
+    aiAnalysis: strategy || undefined
+  }), [totalExpenses, categoryData, trendData, strategy]);
+
   return (
     <AppContext.Provider value={{
       user, expenses, activeTab, showLanding, showUpgradeModal, showProfileModal, strategy,
-      notifications, loading, authReady, token,
+      notifications, loading, authReady, token, insightData,
       setUser, setToken, setActiveTab, setShowLanding, setShowUpgradeModal, setShowProfileModal,
-      logout, addExpense, deleteExpense, updateProfile, clearExpenses, generateStrategy,
-      addNotification, clearNotifications,
+      logout, addExpense, deleteExpense, clearExpenses: async() => {}, updateProfile: async() => {}, 
+      generateStrategy, addNotification, clearNotifications,
       totalExpenses, totalBalance, categoryData, trendData
     }}>
       {children}

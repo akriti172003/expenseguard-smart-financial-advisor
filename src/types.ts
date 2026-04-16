@@ -3,11 +3,12 @@ export interface FinancialStrategy {
   cause: string;
   strategy: string;
   outcome: string;
-  topCategory: string;
-  suggestedActions: string[];
+  topCategory?: string; // Optional as backend might not always send it
+  suggestedActions?: string[]; 
   weeklySavings: number;
-  monthlyProjection: number;
-  type: 'reduction' | 'optimization' | 'balanced';
+  monthlyProjection?: number;
+  // Added 'aggressive' and 'balanced' to match your backend controller logic
+  type: 'reduction' | 'optimization' | 'balanced' | 'aggressive';
 }
 
 export interface WeeklyAnalysis {
@@ -39,6 +40,7 @@ export interface Expense {
   category: string;
   date: string;
   description?: string;
+  isAnomaly?: boolean; // Matches your backend anomaly detection logic
 }
 
 export type Category = 'Food' | 'Rent' | 'Travel' | 'Shopping' | 'Utilities' | 'Health' | 'Other';
@@ -53,5 +55,7 @@ export interface InsightData {
   totalSpending: number;
   categoryBreakdown: { name: string; value: number }[];
   weeklyTrends: { date: string; amount: number }[];
-  insights: string[];
+  insights: string[]; 
+  // ✅ This links your Backend JSON to the Dashboard UI
+  aiAnalysis?: FinancialStrategy; 
 }

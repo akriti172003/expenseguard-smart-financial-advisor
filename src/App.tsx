@@ -33,18 +33,18 @@ export default function App() {
     authReady, 
     token,
     setActiveTab, 
-    setShowUpgradeModal, 
     setShowProfileModal,
-    // Context se optimized data nikaalein
+    // ✅ Extracting the unified data object from Context
     categoryData,
-    trendData
+    trendData,
+    insightData 
   } = useAppContext();
 
   const [toast, setToast] = useState<string | null>(null);
 
-  // ✅ Weekly Spending Calculation (Using context data)
+  // ✅ Weekly Spending Calculation
   const weeklySpending = useMemo(() => {
-    if (!trendData || !Array.isArray(trendData)) return 0;
+    if (!trendData || trendData.length === 0) return 0;
     return trendData.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
   }, [trendData]);
 
@@ -64,6 +64,7 @@ export default function App() {
     );
   }
 
+  // Auth Routing
   if (!token) return <Auth />;
   if (showLanding && !user) return <LandingPage />;
   if (user && user.onboarded === false) return <Onboarding />;
@@ -117,7 +118,8 @@ export default function App() {
         <AnimatePresence mode="wait">
           {activeTab === 'analyzer' ? (
             <motion.div key="analyzer" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-              <WeeklyAnalyzer />
+              {/* ✅ Passing insightData ensures the Food/Travel boxes are populated */}
+              <WeeklyAnalyzer data={insightData} />
             </motion.div>
           ) : (
             <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-12">
@@ -126,7 +128,6 @@ export default function App() {
                 <div className="lg:col-span-2 space-y-8">
                   <BudgetTracker />
                   
-                  {/* ✅ Using optimized categoryData & trendData directly from Context */}
                   <Charts 
                     categoryData={categoryData} 
                     trendData={trendData} 
