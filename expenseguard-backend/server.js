@@ -5,23 +5,20 @@ require('dotenv').config();
 
 const app = express();
 
-// --- ✅ 1. MIDDLEWARES & CORS (Fixed for your Vercel Domains) ---
+// --- ✅ 1. MIDDLEWARES & CORS ---
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://expenseguard-smart-financial-adviso-gamma.vercel.app",
-  "https://expenseguard-smart-financial-adviso.vercel.app" // 👈 Added this to fix CORS error
+  "https://expenseguard-smart-financial-adviso.vercel.app"
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      // Isse aapko Render logs mein dikhega ki kaunsa URL block ho raha hai
       console.error(`🚫 CORS Blocked for origin: ${origin}`);
       callback(new Error('Not allowed by CORS - Production Security Check'));
     }
@@ -33,7 +30,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// Request Logger
+// Request Logger (Essential for monitoring traffic flow)
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} to ${req.url}`);
   next();
@@ -47,13 +44,44 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
-// --- ✅ 3. MODELS & CONTROLLERS ---
+// --- ✅ 3. MODELS & MIDDLEWARE ---
 const User = require('./models/User'); 
 const Expense = require('./models/Expense'); 
 const protect = require('./middleware/authMiddleware');
 const { getProfile } = require('./controllers/authController');
 
-// --- ✅ 4. ADVANCED AI LOGIC (Analyze Finance) ---
+// --- ✅ 4. API ROUTES ---
+
+// Welcome Route
+app.get('/', (req, res) => {
+  res.status(200).json({ message: "ExpenseGuard API is running smoothly!" });
+});
+
+// A. AUTH ROUTES (Public)
+app.use('/api/auth', require('./routes/authRoutes'));
+
+// B. EXPENSE ROUTES (Protected via MVC)
+app.use('/api/expenses', require('./routes/expenseRoutes'));
+
+// C. USER PROFILE ROUTES (Protected)
+app.get('/api/user/profile', protect, getProfile);
+
+// UPDATED: Using returnDocument: 'after' to replace deprecated 'new: true'
+app.patch('/api/user/profile', protect, async (req, res, next) => {
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: req.body },
+      { returnDocument: 'after', runValidators: true } 
+    ).select('-password');
+    
+    res.json(updatedUser);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// D. ADVANCED AI LOGIC (Finance Analysis)
 app.get('/api/user/analyze-finance', protect, async (req, res, next) => {
   try {
     const expenses = await Expense.find({ user: req.user.id });
@@ -90,33 +118,7 @@ app.get('/api/user/analyze-finance', protect, async (req, res, next) => {
   }
 });
 
-// --- ✅ 5. API ROUTES ---
-
-app.get('/', (req, res) => {
-  res.status(200).json({ message: "ExpenseGuard API is running smoothly!" });
-});
-
-app.get('/api/user/profile', protect, getProfile);
-
-app.patch('/api/user/profile', protect, async (req, res, next) => {
-  try {
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: req.body },
-      { new: true, runValidators: true }
-    ).select('-password');
-    
-    res.json(updatedUser);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Modular Routes
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/expenses', require('./routes/expenseRoutes'));
-
-// --- ✅ 6. IMPROVED GLOBAL ERROR HANDLER ---
+// --- ✅ 5. GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
   console.error("Backend Error Log:", err);
 
@@ -139,7 +141,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// --- ✅ 7. START SERVER ---
+// --- ✅ 6. START SERVER ---
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is flying on port ${PORT}`);
