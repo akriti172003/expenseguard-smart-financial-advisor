@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion'; // Cleaned up your motion import to standard framer-motion syntax
 import { Shield, ArrowRight, CheckCircle2, User, Wallet, Target, TrendingUp, PieChart, Zap, ArrowLeft } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useAppContext } from '../context/AppContext';
@@ -25,10 +25,26 @@ export default function Onboarding() {
     };
     
     try {
+      // 1. Send profile data to your backend Mongo Atlas through AppContext
       await updateProfile(profile);
-      addNotification('Welcome to ExpenseGuard!', `Hi ${name || 'User'}, your financial journey starts now. We've set up your dashboard.`);
+      
+      // 2. Add welcoming notification banner
+      addNotification(
+        'Welcome to ExpenseGuard!', 
+        `Hi ${name || 'User'}, your financial journey starts now. We've set up your dashboard.`
+      );
+
+      // 3. ✅ THE FIX: Switch off the landing wrapper/onboarding frame to show the main dashboard panels
+      if (typeof setShowLanding === 'function') {
+        setShowLanding(false); 
+      }
+      
     } catch (error) {
       console.error('Error saving profile:', error);
+      // Fallback navigation insurance: ensures recruiters never get stuck on a frozen button 
+      if (typeof setShowLanding === 'function') {
+        setShowLanding(false);
+      }
     }
   };
 
@@ -239,7 +255,7 @@ export default function Onboarding() {
               <div className="flex flex-col gap-4">
                 <button
                   onClick={handleFinish}
-                  className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-gray-200"
+                  className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-gray-200 cursor-pointer"
                 >
                   Go to Dashboard
                 </button>
