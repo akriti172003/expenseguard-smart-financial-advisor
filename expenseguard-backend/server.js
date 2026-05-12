@@ -15,8 +15,14 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
+    // Allow server-to-server requests (like Postman or mobile testing)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    
+    // ✅ FIX: Match static URLs OR automatically allow any dynamic Vercel preview deployment
+    if (
+      allowedOrigins.indexOf(origin) !== -1 || 
+      origin.endsWith('.vercel.app')
+    ) {
       callback(null, true);
     } else {
       console.error(`🚫 CORS Blocked for origin: ${origin}`);
@@ -66,7 +72,7 @@ app.use('/api/expenses', require('./routes/expenseRoutes'));
 // C. USER PROFILE ROUTES (Protected)
 app.get('/api/user/profile', protect, getProfile);
 
-// UPDATED: Using returnDocument: 'after' to replace deprecated 'new: true'
+// Profile Updates
 app.patch('/api/user/profile', protect, async (req, res, next) => {
   try {
     const updatedUser = await User.findByIdAndUpdate(
