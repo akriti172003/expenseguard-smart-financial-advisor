@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion'; // Cleaned up your motion import to standard framer-motion syntax
+import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, ArrowRight, CheckCircle2, User, Wallet, Target, TrendingUp, PieChart, Zap, ArrowLeft } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useAppContext } from '../context/AppContext';
@@ -25,7 +25,7 @@ export default function Onboarding() {
     };
     
     try {
-      // 1. Send profile data to your backend Mongo Atlas through AppContext
+      // 1. Attempt to sync profile data to MongoDB Atlas through AppContext
       await updateProfile(profile);
       
       // 2. Add welcoming notification banner
@@ -34,14 +34,16 @@ export default function Onboarding() {
         `Hi ${name || 'User'}, your financial journey starts now. We've set up your dashboard.`
       );
 
-      // 3. ✅ THE FIX: Switch off the landing wrapper/onboarding frame to show the main dashboard panels
+      // 3. Switch off the landing wrapper/onboarding frame to reveal the dashboard
       if (typeof setShowLanding === 'function') {
         setShowLanding(false); 
       }
       
     } catch (error) {
-      console.error('Error saving profile:', error);
-      // Fallback navigation insurance: ensures recruiters never get stuck on a frozen button 
+      console.error('Onboarding Sync Network Error:', error);
+      
+      // ✅ THE BYPASS FIX: If the local backend returns a 404 or crashes, 
+      // we force navigation to the dashboard anyway so the UI never freezes.
       if (typeof setShowLanding === 'function') {
         setShowLanding(false);
       }
